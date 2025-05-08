@@ -78,7 +78,6 @@ jobs:
         run: |
           # Decode the base64-encoded rclone.conf from secrets
           echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
-          cat rclone.conf
           
       - name: Download from MEGA
         if: steps.check_links.outputs.has_links == 'true'
@@ -87,9 +86,9 @@ jobs:
           echo "Importing $MEGA_URL for WebDav"
           mega-rm -r Mega-Sync -f & mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
-          mega-webdav Mega-Sync
+          mega-webdav /
           # Downloading and Uploading causing Storage Limitations 
-          # mega-get "$MEGA_URL" ./Mega-Sync/
+          # mega-get "$MEGA_URL" ./Mega-Sync
       
       
       - name: Check Rclone Source
