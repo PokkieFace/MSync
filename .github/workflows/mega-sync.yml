@@ -119,7 +119,8 @@ jobs:
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
-        run: mega-rm -r Mega-Sync -f & mega-logout
+        run: mega-rm -r Mega-Sync -f 
+             mega-logout
         
       - name: Update link files
         if: steps.check_links.outputs.has_links == 'true' && success()
