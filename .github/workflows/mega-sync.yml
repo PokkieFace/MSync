@@ -16,14 +16,6 @@ jobs:
     timeout-minutes: 120  # Set a reasonable timeout
     
     steps:
-      - name: Maximize build space
-        uses: AdityaGarg8/remove-unwanted-software@v5
-        with:
-          remove-android: 'true'
-      - name: Build
-        run: |
-          echo "Free space:"
-          df -h
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
@@ -91,27 +83,20 @@ jobs:
         if: steps.check_links.outputs.has_links == 'true'
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
-          echo "Downloading from: $MEGA_URL"
-          mkdir -p ./Mega-Sync
-          mega-get "$MEGA_URL" ./Mega-Sync/
+          echo "Importing $MEGA_URL for WebDav"
+          mega-mkdir Mega-Sync
+          mega-import "$MEGA_URL" /Mega-Sync
+          mega-webdav Mega-Sync
+          # Downloading and Uploading causing Storage Limitations 
+          # mega-get "$MEGA_URL" ./Mega-Sync/
       
-      - name: Clean FileNames 
-        run: |
-          chmod +x clean.sh
-          ./clean.sh
-
       - name: Upload to Rclone destination
         if: steps.check_links.outputs.has_links == 'true'
         run: |
-          # Check if directory has content
-          if [ -z "$(ls -A ./Mega-Sync/)" ]; then
-            echo "Download directory is empty. MEGA download may have failed."
-            exit 1
-          fi
-          
           echo "Starting rclone transfer..."
-          rclone --config "rclone.conf" move ./Mega-Sync/ "NewDrop:Sync" \
-                --transfers 50 \
+          # Sync Fast File Transfer
+          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" \
+                --transfers 64 \
                 --checkers 100 \
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
@@ -124,11 +109,14 @@ jobs:
                 --tpslimit 10 \
                 --tpslimit-burst 20 \
                 --exclude "*.{pdf,txt}" \
-                --fast-list
-
-      - name: Logout from MEGA
+                --fast-list \
+                --dropbox-encoding --dropbox-batch-mode sync --dropbox-batch-size
+          # Async File Checking 
+          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
+          
+      - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
-        run: mega-logout
+        run: mega-rm -r Mega-Sync -fmega-logout
         
       - name: Update link files
         if: steps.check_links.outputs.has_links == 'true' && success()
