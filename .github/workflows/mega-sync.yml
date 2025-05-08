@@ -94,15 +94,15 @@ jobs:
       - name: Check Rclone Source
         if: steps.check_links.outputs.has_links == 'true'
         run: |
-          rclone --config "rclone.conf" ls Mega:
-          rclone --config "rclone.conf" size Mega:
+          rclone --config "rclone.conf" lsd Mega:
+          rclone --config "rclone.conf" size Mega:Mega-Sync
           
       - name: Upload to Rclone destination
         if: steps.check_links.outputs.has_links == 'true'
         run: |
           echo "Starting rclone transfer..."
           # Sync Fast File Transfer
-          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" \
+          rclone --config "rclone.conf" copy Mega:Mega-Sync "NewDrop:Sync" \
                 --transfers 100 \
                 --checkers 100 \
                 --buffer-size 64M \
@@ -121,7 +121,7 @@ jobs:
                 --dropbox-batch-mode sync \
                 --dropbox-batch-size 100
           # Async File Checking 
-          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
+          rclone --config "rclone.conf" copy Mega:Mega-Sync "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
