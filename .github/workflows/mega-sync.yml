@@ -110,13 +110,15 @@ jobs:
                 --tpslimit-burst 20 \
                 --exclude "*.{pdf,txt}" \
                 --fast-list \
-                --dropbox-encoding --dropbox-batch-mode sync --dropbox-batch-size
+                --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
+                --dropbox-batch-mode sync \
+                --dropbox-batch-size
           # Async File Checking 
-          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
+          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
-        run: mega-rm -r Mega-Sync -fmega-logout
+        run: mega-rm -r Mega-Sync -f & mega-logout
         
       - name: Update link files
         if: steps.check_links.outputs.has_links == 'true' && success()
