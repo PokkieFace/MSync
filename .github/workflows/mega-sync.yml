@@ -64,13 +64,11 @@ jobs:
       
       - name: Setup MEGA credentials
         if: steps.check_links.outputs.has_links == 'true'
+        timeout-minutes: 1
         run: |
           # Using secrets to login to MEGA
-          echo "${{ secrets.MEGA_EMAIL }}" > /tmp/mega_credentials
-          echo "${{ secrets.MEGA_PASSWORD }}" >> /tmp/mega_credentials
-          mega-login --with-password=/tmp/mega_credentials
-          rm /tmp/mega_credentials
-      
+          mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
+          
       - name: Setup Rclone Config
         if: steps.check_links.outputs.has_links == 'true'
         run: |
