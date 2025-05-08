@@ -82,7 +82,12 @@ jobs:
           echo "Downloading from: $MEGA_URL"
           mkdir -p ./Mega-Sync
           mega-get "$MEGA_URL" ./Mega-Sync/
-        
+      
+      - name: Clean FileNames 
+        run: |
+          chmod +x clean.sh
+          bash clean.sh
+
       - name: Upload to Rclone destination
         if: steps.check_links.outputs.has_links == 'true'
         run: |
