@@ -103,8 +103,8 @@ jobs:
           
           echo "Starting rclone transfer..."
           rclone --config "rclone.conf" move ./Mega-Sync/ "NewDrop:Sync" \
-                --transfers 16 \
-                --checkers 32 \
+                --transfers 50 \
+                --checkers 100 \
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
                 --stats 1s \
@@ -115,7 +115,8 @@ jobs:
                 --timeout 300s \
                 --tpslimit 10 \
                 --tpslimit-burst 20 \
-                --fast-list | tee rclone-log.txt
+                --exclude "*.{pdf,txt}"
+                --fast-list
 
       - name: Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
