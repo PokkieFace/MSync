@@ -1,0 +1,133 @@
+name: MEGA to Rclone Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Set a reasonable timeout
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for pushing changes back
+      
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+      
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl
+      
+      - name: Check for links
+        id: check_links
+        run: |
+          # Create files if they don't exist
+          touch pending_links.txt done_links.txt
+          
+          # Count pending links
+          PENDING_COUNT=$(grep -c "https://mega.nz" pending_links.txt || echo "0")
+          echo "Number of pending links: $PENDING_COUNT"
+          
+          if [ "$PENDING_COUNT" -eq "0" ]; then
+            echo "No pending links found. Exiting workflow."
+            echo "has_links=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "has_links=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get first link
+          MEGA_URL=$(grep -m 1 "https://mega.nz" pending_links.txt)
+          echo "Processing link: $MEGA_URL"
+          echo "mega_url=$MEGA_URL" >> $GITHUB_OUTPUT
+      
+      - name: Install MEGA CMD
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
+        
+      - name: Install Rclone
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          sudo -v
+          curl https://rclone.org/install.sh | sudo bash
+      
+      - name: Setup MEGA credentials
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Using secrets to login to MEGA
+          echo "${{ secrets.MEGA_EMAIL }}" > /tmp/mega_credentials
+          echo "${{ secrets.MEGA_PASSWORD }}" >> /tmp/mega_credentials
+          mega-login --with-password=/tmp/mega_credentials
+          rm /tmp/mega_credentials
+      
+      - name: Setup Rclone Config
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Decode the base64-encoded rclone.conf from secrets
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
+          
+      - name: Download from MEGA
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          echo "Downloading from: $MEGA_URL"
+          mkdir -p ./Mega-Sync
+          mega-get "$MEGA_URL" ./Mega-Sync/
+        
+      - name: Upload to Rclone destination
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Check if directory has content
+          if [ -z "$(ls -A ./Mega-Sync/)" ]; then
+            echo "Download directory is empty. MEGA download may have failed."
+            exit 1
+          fi
+          
+          echo "Starting rclone transfer..."
+          rclone --config "rclone.conf" move ./Mega-Sync/ "NewDrop:Sync" \
+            --transfers 16 \
+            --checkers 32 \
+            --buffer-size 64M \
+            --drive-chunk-size 32M \
+            --stats 1s \
+            --stats-one-line \
+            --progress \
+            --bwlimit 0 \
+            --retries 3 \
+            --retries-sleep 10s \
+            --timeout 300s \
+            --tpslimit 10 \
+            --tpslimit-burst 20 \
+            --fast-list
+      
+      - name: Logout from MEGA
+        if: steps.check_links.outputs.has_links == 'true' && always()
+        run: mega-logout
+        
+      - name: Update link files
+        if: steps.check_links.outputs.has_links == 'true' && success()
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          
+          # Add timestamp to done link
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - $MEGA_URL" >> done_links.txt
+          
+          # Remove from pending links (create new file without the processed link)
+          grep -v "$MEGA_URL" pending_links.txt > pending_links_new.txt
+          mv pending_links_new.txt pending_links.txt
+          
+          # Commit and push changes
+          git add pending_links.txt done_links.txt
+          git commit -m "Processed link: $MEGA_URL"
+          git push
