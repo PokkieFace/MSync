@@ -90,13 +90,6 @@ jobs:
           # Downloading and Uploading causing Storage Limitations 
           # mega-get "$MEGA_URL" ./Mega-Sync
       
-      
-      - name: Check Rclone Source
-        if: steps.check_links.outputs.has_links == 'true'
-        run: |
-          rclone --config "rclone.conf" lsd Mega:
-          rclone --config "rclone.conf" size Mega:Mega-Sync
-          
       - name: Upload to Rclone destination
         if: steps.check_links.outputs.has_links == 'true'
         run: |
