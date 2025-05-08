@@ -97,7 +97,7 @@ jobs:
           echo "Starting rclone transfer..."
           # Sync Fast File Transfer
           rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" \
-                --transfers 64 \
+                --transfers 100 \
                 --checkers 100 \
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
@@ -113,7 +113,7 @@ jobs:
                 --fast-list \
                 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
                 --dropbox-batch-mode sync \
-                --dropbox-batch-size
+                --dropbox-batch-size 100
           # Async File Checking 
           rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
           
