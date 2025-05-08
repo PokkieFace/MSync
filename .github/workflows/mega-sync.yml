@@ -84,8 +84,7 @@ jobs:
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           echo "Importing $MEGA_URL for WebDav"
-          nohup mega-rm -r Mega-Sync -f &
-          mega-mkdir Mega-Sync
+          mega-rm -r Mega-Sync -f & mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
           mega-webdav Mega-Sync
           # Downloading and Uploading causing Storage Limitations 
