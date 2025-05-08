@@ -123,7 +123,7 @@ jobs:
                 --timeout 300s \
                 --tpslimit 10 \
                 --tpslimit-burst 20 \
-                --exclude "*.{pdf,txt}"
+                --exclude "*.{pdf,txt}" \
                 --fast-list
 
       - name: Logout from MEGA
