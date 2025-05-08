@@ -16,6 +16,14 @@ jobs:
     timeout-minutes: 120  # Set a reasonable timeout
     
     steps:
+      - name: Maximize build space
+        uses: AdityaGarg8/remove-unwanted-software@v5
+        with:
+          remove-android: 'true'
+      - name: Build
+        run: |
+          echo "Free space:"
+          df -h
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
