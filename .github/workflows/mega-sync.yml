@@ -78,6 +78,7 @@ jobs:
         run: |
           # Decode the base64-encoded rclone.conf from secrets
           echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
+          cat rclone.conf
           
       - name: Download from MEGA
         if: steps.check_links.outputs.has_links == 'true'
