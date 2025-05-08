@@ -94,21 +94,20 @@ jobs:
           
           echo "Starting rclone transfer..."
           rclone --config "rclone.conf" move ./Mega-Sync/ "NewDrop:Sync" \
-            --transfers 16 \
-            --checkers 32 \
-            --buffer-size 64M \
-            --drive-chunk-size 32M \
-            --stats 1s \
-            --stats-one-line \
-            --progress \
-            --bwlimit 0 \
-            --retries 3 \
-            --retries-sleep 10s \
-            --timeout 300s \
-            --tpslimit 10 \
-            --tpslimit-burst 20 \
-            --fast-list
-      
+                --transfers 16 \
+                --checkers 32 \
+                --buffer-size 64M \
+                --dropbox-chunk-size 150M \
+                --stats 1s \
+                --stats-one-line \
+                --bwlimit 0 \
+                --retries 3 \
+                --retries-sleep 10s \
+                --timeout 300s \
+                --tpslimit 10 \
+                --tpslimit-burst 20 \
+                --fast-list | tee rclone-log.txt
+
       - name: Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
         run: mega-logout
