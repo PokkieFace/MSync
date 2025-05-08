@@ -1,64 +1,56 @@
-# MEGA to Rclone Sync GitHub Action
+# MEGA to Rclone Sync
 
-This workflow automates downloading files from MEGA and uploading them to a remote storage via Rclone.
+This repository contains a GitHub Actions workflow that automatically processes MEGA links and transfers the content to a remote storage using Rclone.
+
+## How It Works
+
+1. The workflow reads links from `pending_links.txt`
+2. It processes the first link in the list (downloads and transfers)
+3. Once completed, it moves the processed link to `done_links.txt` with a timestamp
+4. The workflow can be triggered manually or runs on a daily schedule
 
 ## Setup Instructions
 
-### 1. Create Repository Secrets
+### 1. Repository Structure
 
-You need to add the following secrets to your GitHub repository:
+Ensure your repository has the following files:
+- `.github/workflows/mega_sync.yml` - The workflow file
+- `pending_links.txt` - List of MEGA links to process (one per line)
+- `done_links.txt` - Record of processed links (created automatically)
 
-- `MEGA_EMAIL`: Your MEGA account email
-- `MEGA_PASSWORD`: Your MEGA account password
-- `RCLONE_CONFIG`: Your base64-encoded rclone.conf file
-- `DEFAULT_MEGA_URL` (optional): Default MEGA URL to use for scheduled runs
+### 2. GitHub Secrets
+
+Add the following secrets to your repository:
+- `MEGA_EMAIL` - Your MEGA account email
+- `MEGA_PASSWORD` - Your MEGA account password
+- `RCLONE_CONFIG` - Your base64-encoded rclone.conf file
+- `GITHUB_TOKEN` - This is provided automatically by GitHub
 
 To base64 encode your rclone.conf:
-
 ```bash
 base64 -w 0 rclone.conf > rclone_base64.txt
 ```
 
-Then copy the contents of rclone_base64.txt into the `RCLONE_CONFIG` secret.
+### 3. Managing MEGA Links
 
-### 2. Directory Structure
+- Add new links to `pending_links.txt` (one URL per line)
+- Each workflow run processes exactly one link
+- Processed links are automatically moved to `done_links.txt`
+- The workflow will skip execution if there are no pending links
 
-Ensure your repository has the following structure:
+### 4. Running the Workflow
 
-```
-your-repo/
-├── .github/
-│   └── workflows/
-│       └── mega_sync.yml
-└── (other files)
-```
-
-### 3. Running the Workflow
-
-#### Manual Trigger:
+#### Manual Trigger
 1. Go to the "Actions" tab in your repository
 2. Select "MEGA to Rclone Sync" workflow
 3. Click "Run workflow"
-4. Enter the MEGA URL you want to download from
-5. Click "Run workflow" button
 
-#### Automated Schedule:
-The workflow is configured to run daily at midnight UTC. You can modify the schedule in the workflow file.
+#### Automated Schedule
+- The workflow runs daily at midnight UTC
+- You can modify the schedule in the workflow file
 
-### 4. Troubleshooting
+## Monitoring Progress
 
-- Check the workflow logs for detailed error messages
-- Ensure your MEGA and Rclone credentials are correct
-- Verify that the MEGA URL is valid and accessible with your account
-- Check if your rclone remote "NewDrop" is configured correctly in your rclone.conf
-
-## Security Considerations
-
-- Your MEGA and Rclone credentials are stored as GitHub Secrets and are not exposed in logs
-- For additional security, consider using GitHub's OIDC with your cloud provider for authentication
-- Set appropriate permissions for your workflow
-
-## Customization
-
-- Adjust the timeout, cron schedule, or resource allocation as needed
-- Modify the rclone parameters in the "Upload to Rclone destination" step for different performance characteristics
+- Check the workflow run logs to see which link was processed
+- View `done_links.txt` for a history of processed links with timestamps
+- The remaining links in `pending_links.txt` are pending processing
