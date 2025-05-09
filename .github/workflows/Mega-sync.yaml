@@ -118,7 +118,7 @@ jobs:
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
                 --stats 4s \
-                --stats-one-line -P \
+                --stats-one-line -v \
                 --bwlimit 0 \
                 --retries 3 \
                 --retries-sleep 10s \
