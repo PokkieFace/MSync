@@ -1,0 +1,136 @@
+name: MEGA to Rclone Sync
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: write
+
+  
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Set a reasonable timeout
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for pushing changes back
+      
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+      
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl
+      
+      - name: Check for links
+        id: check_links
+        run: |
+          # Create files if they don't exist
+          touch pending_links.txt done_links.txt
+          
+          # Count pending links
+          PENDING_COUNT=$(grep -c "https://mega.nz" pending_links.txt || echo "0")
+          echo "Number of pending links: $PENDING_COUNT"
+          
+          if [ "$PENDING_COUNT" -eq "0" ]; then
+            echo "No pending links found. Exiting workflow."
+            echo "has_links=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "has_links=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get first link
+          MEGA_URL=$(grep -m 1 "https://mega.nz" pending_links.txt)
+          echo "Processing link: $MEGA_URL"
+          echo "mega_url=$MEGA_URL" >> $GITHUB_OUTPUT
+      
+      - name: Install MEGA CMD
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
+        
+      - name: Install Rclone
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          sudo -v
+          curl https://rclone.org/install.sh | sudo bash
+      
+      - name: Setup MEGA credentials
+        if: steps.check_links.outputs.has_links == 'true'
+        timeout-minutes: 1
+        run: |
+          # Using secrets to login to MEGA
+          mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
+          
+      - name: Setup Rclone Config
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Decode the base64-encoded rclone.conf from secrets
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
+          
+      - name: Download from MEGA
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          echo "Importing $MEGA_URL for WebDav"
+          mega-mkdir Mega-Sync
+          mega-import "$MEGA_URL" /Mega-Sync
+          mega-webdav Mega-Sync
+          # Downloading and Uploading causing Storage Limitations 
+          # mega-get "$MEGA_URL" ./Mega-Sync/
+      
+      - name: Upload to Rclone destination
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          echo "Starting rclone transfer..."
+          # Sync Fast File Transfer
+          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" \
+                --transfers 64 \
+                --checkers 100 \
+                --buffer-size 64M \
+                --dropbox-chunk-size 150M \
+                --stats 1s \
+                --stats-one-line \
+                --bwlimit 0 \
+                --retries 3 \
+                --retries-sleep 10s \
+                --timeout 300s \
+                --tpslimit 10 \
+                --tpslimit-burst 20 \
+                --exclude "*.{pdf,txt}" \
+                --fast-list \
+                --dropbox-encoding --dropbox-batch-mode sync --dropbox-batch-size
+          # Async File Checking 
+          rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding --dropbox-batch-mode async --dropbox-batch-size 100 --exclude "*.{pdf,txt}" 
+          
+      - name: Clear Temp Files and Logout from MEGA
+        if: steps.check_links.outputs.has_links == 'true' && always()
+        run: mega-rm -r Mega-Sync -fmega-logout
+        
+      - name: Update link files
+        if: steps.check_links.outputs.has_links == 'true' && success()
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          
+          # Add timestamp to done link
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - $MEGA_URL" >> done_links.txt
+          
+          # Remove from pending links (create new file without the processed link)
+          grep -v "$MEGA_URL" pending_links.txt > pending_links_new.txt
+          mv pending_links_new.txt pending_links.txt
+          
+          # Commit and push changes
+          git add pending_links.txt done_links.txt
+          git commit -m "Processed link: $MEGA_URL"
+          git push
