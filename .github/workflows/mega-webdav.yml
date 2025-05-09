@@ -68,7 +68,7 @@ jobs:
       
       - name: Setup MEGA credentials
         if: steps.check_links.outputs.has_links == 'true'
-        timeout-minutes: 1
+        timeout-minutes: 3
         run: |
           # Using secrets to login to MEGA
           mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
