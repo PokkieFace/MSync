@@ -1,0 +1,172 @@
+name: MEGA to Rclone Direct Mount
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120  # Set a reasonable timeout
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+      
+      - name: Check for links
+        id: check_links
+        run: |
+          # Create files if they don't exist
+          touch pending_links.txt done_links.txt
+          
+          # Count pending links
+          PENDING_COUNT=$(grep -c "https://mega.nz" pending_links.txt || echo "0")
+          echo "Number of pending links: $PENDING_COUNT"
+          
+          if [ "$PENDING_COUNT" -eq "0" ]; then
+            echo "No pending links found. Exiting workflow."
+            echo "has_links=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "has_links=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get first link
+          MEGA_URL=$(grep -m 1 "https://mega.nz" pending_links.txt)
+          echo "Processing link: $MEGA_URL"
+          echo "mega_url=$MEGA_URL" >> $GITHUB_OUTPUT
+      
+      - name: Install dependencies
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fuse wget curl
+          
+          # Install MEGAcmd
+          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
+          
+          # Install Rclone
+          curl https://rclone.org/install.sh | sudo bash
+      
+      - name: Setup credentials
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Setup MEGA
+          mega-login "${{ secrets.MEGA_EMAIL }}" "${{ secrets.MEGA_PASSWORD }}"
+          
+          # Setup Rclone
+          mkdir -p ~/.config/rclone
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > ~/.config/rclone/rclone.conf
+          
+      - name: Mount Rclone destination
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Create mount directory
+          mkdir -p ~/rclone-mount
+          
+          # Mount rclone with write capability
+          rclone mount NewDrop:Sync ~/rclone-mount --daemon --vfs-cache-mode writes --buffer-size 256M --vfs-read-chunk-size 128M --vfs-read-chunk-size-limit 1G --vfs-cache-max-size 5G
+          
+          # Wait for mount to be ready
+          sleep 5
+          echo "Rclone mount status:"
+          mount | grep rclone
+          echo "Mount directory contents:"
+          ls -la ~/rclone-mount
+      
+      - name: Download from MEGA directly to Rclone mount
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          echo "Importing $MEGA_URL directly to rclone mount"
+          
+          # Make a temporary directory inside the mount
+          mkdir -p ~/rclone-mount/incoming
+          
+          # Download directly to the mount
+          mega-get "$MEGA_URL" ~/rclone-mount/incoming/
+          
+          # Check if download was successful
+          if [ $? -ne 0 ]; then
+            echo "Error: MEGA download failed"
+            exit 1
+          fi
+          
+          echo "Download completed. Contents of mount/incoming:"
+          ls -la ~/rclone-mount/incoming/
+      
+      - name: Clean filenames
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Check if clean.sh exists
+          if [ -f "clean.sh" ]; then
+            chmod +x clean.sh
+            # Modify clean.sh to work with the mount path instead
+            sed -i 's|./Mega-Sync/|~/rclone-mount/incoming/|g' clean.sh
+            ./clean.sh
+          else
+            echo "clean.sh not found, skipping filename cleaning"
+          fi
+          
+      - name: Move files to final location in mount
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Check if directory has content
+          if [ -z "$(ls -A ~/rclone-mount/incoming/)" ]; then
+            echo "Download directory is empty. MEGA download may have failed."
+            exit 1
+          fi
+          
+          # Move files from incoming to root of the mount
+          find ~/rclone-mount/incoming -type f -not -name "*.pdf" -not -name "*.txt" -exec mv {} ~/rclone-mount/ \;
+          
+          # Remove empty incoming directory
+          rmdir ~/rclone-mount/incoming || true
+          
+          echo "Files moved to final location. Current mount contents:"
+          ls -la ~/rclone-mount/
+      
+      - name: Ensure sync completion and unmount
+        if: steps.check_links.outputs.has_links == 'true' && always()
+        run: |
+          # Force sync to complete before unmounting
+          echo "Syncing changes to remote storage..."
+          sleep 30  # Give time for background uploads to complete
+          
+          # Unmount the rclone mount
+          echo "Unmounting rclone..."
+          fusermount -u ~/rclone-mount || true
+      
+      - name: Logout from MEGA
+        if: steps.check_links.outputs.has_links == 'true' && always()
+        run: mega-logout || true
+        
+      - name: Update link files
+        if: steps.check_links.outputs.has_links == 'true' && success()
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          
+          # Add timestamp to done link
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - $MEGA_URL" >> done_links.txt
+          
+          # Remove from pending links
+          grep -v "$MEGA_URL" pending_links.txt > pending_links_new.txt
+          mv pending_links_new.txt pending_links.txt
+          
+          # Commit and push changes
+          git add pending_links.txt done_links.txt
+          git commit -m "Processed link: $MEGA_URL"
+          git push
