@@ -84,7 +84,8 @@ jobs:
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           echo "Importing $MEGA_URL for WebDav"
-          mega-rm -r Mega-Sync -f
+          mega-rm -r Mega-Sync -f  || echo "Failed to Delete Sync Folder.So, Creating Sunc Folder"
+          sleep 5
           mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
           mega-webdav /
@@ -116,7 +117,10 @@ jobs:
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
-        run: mega-rm -r Mega-Sync -f && mega-logout
+        run: |
+             mega-rm -r Mega-Sync -f  || echo "Failed to Delete Sync Folder.So, Creating Sunc Folder"
+             sleep 5
+             mega-logout
         
       - name: Update link files
         if: steps.check_links.outputs.has_links == 'true' && success()
