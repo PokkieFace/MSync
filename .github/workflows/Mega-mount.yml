@@ -12,7 +12,7 @@ permissions:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    timeout-minutes: 120  # Set a reasonable timeout
+    timeout-minutes: 180  # Extended timeout for large transfers
     
     steps:
       - name: Checkout repository
@@ -52,43 +52,218 @@ jobs:
         if: steps.check_links.outputs.has_links == 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y fuse wget curl
+          sudo apt-get install -y fuse wget curl jq pv
           
-          # Install MEGAcmd
-          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          # Install MEGAcmd with retry logic
+          for i in {1..3}; do
+            wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb && break || sleep 10
+          done
           sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
           
-          # Install Rclone
-          curl https://rclone.org/install.sh | sudo bash
+          # Install Rclone with retry logic
+          for i in {1..3}; do
+            curl -s https://rclone.org/install.sh | sudo bash && break || sleep 10
+          done
+          
+          # Install additional utilities
+          sudo apt-get install -y fuse3 fusermount3 netcat-openbsd 2>/dev/null || true
       
       - name: Setup credentials
         if: steps.check_links.outputs.has_links == 'true'
         run: |
-          # Setup MEGA
-          mega-login "${{ secrets.MEGA_EMAIL }}" "${{ secrets.MEGA_PASSWORD }}"
+          # Setup MEGA with retry logic
+          for i in {1..3}; do
+            mega-login "${{ secrets.MEGA_EMAIL }}" "${{ secrets.MEGA_PASSWORD }}" && break || sleep 10
+            if [ $i -eq 3 ]; then
+              echo "::error::Failed to log in to MEGA after 3 attempts"
+              exit 1
+            fi
+          done
+          
+          # Test MEGA connection
+          if ! mega-ls / >/dev/null 2>&1; then
+            echo "::error::MEGA login successful but unable to list files"
+            exit 1
+          fi
+          echo "MEGA login successful and connection verified"
           
           # Setup Rclone
           mkdir -p ~/.config/rclone
           echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > ~/.config/rclone/rclone.conf
           
+          # Test Rclone config
+          if ! rclone listremotes --config ~/.config/rclone/rclone.conf | grep -q "NewDrop:"; then
+            echo "::error::Rclone config issue - NewDrop remote not found"
+            cat ~/.config/rclone/rclone.conf | grep -v secret
+            exit 1
+          fi
+          echo "Rclone config verified, remotes available:"
+          rclone listremotes --config ~/.config/rclone/rclone.conf
+      
+      - name: Create mount helper scripts
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          # Create mount check script
+          cat > ~/check_mount.sh << 'EOF'
+          #!/bin/bash
+          MOUNT_POINT="$1"
+          
+          if mountpoint -q "$MOUNT_POINT"; then
+            if touch "$MOUNT_POINT/test_file" 2>/dev/null; then
+              rm "$MOUNT_POINT/test_file"
+              echo "Mount is working correctly"
+              return 0
+            else
+              echo "Mount exists but is not writable"
+              return 2
+            fi
+          else
+            echo "Directory is not a mountpoint"
+            return 1
+          fi
+          EOF
+          chmod +x ~/check_mount.sh
+          
+          # Create remount script
+          cat > ~/remount.sh << 'EOF'
+          #!/bin/bash
+          MOUNT_POINT="$1"
+          
+          echo "Attempting to remount..."
+          # Kill any existing rclone process
+          if [ -f ~/rclone.pid ]; then
+            PID=$(cat ~/rclone.pid)
+            kill $PID 2>/dev/null || true
+            sleep 1
+            kill -9 $PID 2>/dev/null || true
+          fi
+          
+          # Force unmount if needed
+          fusermount -uz "$MOUNT_POINT" 2>/dev/null || true
+          sleep 2
+          
+          # Restart the mount with nohup
+          nohup rclone mount NewDrop:Sync "$MOUNT_POINT" \
+            --vfs-cache-mode writes \
+            --buffer-size 128M \
+            --vfs-read-chunk-size 64M \
+            --vfs-read-chunk-size-limit 256M \
+            --vfs-cache-max-size 1G \
+            --vfs-cache-max-age 1h \
+            --dir-cache-time 30m \
+            --transfers 4 \
+            --checkers 8 \
+            --low-level-retries 10 \
+            --retries 3 \
+            --contimeout 15s \
+            --timeout 300s \
+            --log-level INFO \
+            --log-file ~/rclone-mount.log > ~/rclone-output.log 2>&1 &
+            
+          # Save the PID
+          RCLONE_PID=$!
+          echo $RCLONE_PID > ~/rclone.pid
+          echo "Started rclone with PID $RCLONE_PID"
+          
+          sleep 10
+          if ~/check_mount.sh "$MOUNT_POINT"; then
+            echo "Remount successful"
+            return 0
+          else
+            echo "Remount failed"
+            return 1
+          fi
+          EOF
+          chmod +x ~/remount.sh
+          
       - name: Mount Rclone destination
         if: steps.check_links.outputs.has_links == 'true'
+        id: mount_rclone
         run: |
           # Create mount directory
           mkdir -p ~/rclone-mount
           
-          # Mount rclone with write capability
-          rclone mount NewDrop:Sync ~/rclone-mount --daemon --vfs-cache-mode writes --buffer-size 256M --vfs-read-chunk-size 128M --vfs-read-chunk-size-limit 1G --vfs-cache-max-size 5G
+          # First mount attempt - use direct mounting approach instead of daemon mode
+          echo "Mounting rclone remote..."
+          
+          # Create directory for cached files
+          mkdir -p ~/.cache/rclone
+          
+          # Use nohup to avoid daemon mode issues
+          nohup rclone mount NewDrop:Sync ~/rclone-mount \
+            --vfs-cache-mode writes \
+            --buffer-size 128M \
+            --vfs-read-chunk-size 64M \
+            --vfs-read-chunk-size-limit 256M \
+            --vfs-cache-max-size 1G \
+            --vfs-cache-max-age 1h \
+            --dir-cache-time 30m \
+            --transfers 4 \
+            --checkers 8 \
+            --low-level-retries 10 \
+            --retries 3 \
+            --contimeout 15s \
+            --timeout 300s \
+            --log-level INFO \
+            --log-file ~/rclone-mount.log > ~/rclone-output.log 2>&1 &
+          
+          # Capture PID and save it
+          RCLONE_PID=$!
+          echo $RCLONE_PID > ~/rclone.pid
+          echo "Started rclone with PID $RCLONE_PID"
           
           # Wait for mount to be ready
-          sleep 5
-          echo "Rclone mount status:"
-          mount | grep rclone
+          sleep 10
+          
+          # Check if mount is working
+          for i in {1..3}; do
+            if ~/check_mount.sh ~/rclone-mount; then
+              echo "Mount successful on attempt $i"
+              echo "mount_success=true" >> $GITHUB_OUTPUT
+              break
+            else
+              echo "Mount failed on attempt $i, retrying..."
+              ~/remount.sh ~/rclone-mount
+            fi
+            
+            if [ $i -eq 3 ]; then
+              echo "::error::Failed to mount after 3 attempts"
+              echo "mount_success=false" >> $GITHUB_OUTPUT
+              cat ~/rclone-mount.log || true
+              exit 1
+            fi
+          done
+          
           echo "Mount directory contents:"
-          ls -la ~/rclone-mount
+          ls -la ~/rclone-mount || true
+          echo "Current mounts:"
+          mount | grep rclone || true
+      
+      - name: Schedule mount health checks
+        if: steps.check_links.outputs.has_links == 'true' && steps.mount_rclone.outputs.mount_success == 'true'
+        run: |
+          # Create a background health check process
+          cat > ~/health_checker.sh << 'EOF'
+          #!/bin/bash
+          MOUNT_POINT="$1"
+          
+          while true; do
+            if ! ~/check_mount.sh "$MOUNT_POINT" > /dev/null; then
+              echo "$(date): Mount issue detected, attempting to fix..."
+              ~/remount.sh "$MOUNT_POINT"
+            fi
+            sleep 30
+          done
+          EOF
+          chmod +x ~/health_checker.sh
+          
+          # Start the health checker in background
+          ~/health_checker.sh ~/rclone-mount &
+          echo "Health checker started with PID $!"
       
       - name: Download from MEGA directly to Rclone mount
-        if: steps.check_links.outputs.has_links == 'true'
+        if: steps.check_links.outputs.has_links == 'true' && steps.mount_rclone.outputs.mount_success == 'true'
+        id: mega_download
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           echo "Importing $MEGA_URL directly to rclone mount"
@@ -96,66 +271,249 @@ jobs:
           # Make a temporary directory inside the mount
           mkdir -p ~/rclone-mount/incoming
           
-          # Download directly to the mount
-          mega-get "$MEGA_URL" ~/rclone-mount/incoming/
+          # Function to check mount before proceeding
+          check_before_proceed() {
+            if ! ~/check_mount.sh ~/rclone-mount; then
+              echo "Mount issue detected before proceeding, attempting to fix..."
+              if ! ~/remount.sh ~/rclone-mount; then
+                echo "::error::Failed to restore mount"
+                return 1
+              fi
+            fi
+            return 0
+          }
           
-          # Check if download was successful
-          if [ $? -ne 0 ]; then
-            echo "Error: MEGA download failed"
+          # Ensure mount is working before starting download
+          check_before_proceed || exit 1
+          
+          # Download with retries
+          MAX_RETRIES=3
+          success=false
+          
+          for attempt in $(seq 1 $MAX_RETRIES); do
+            echo "Download attempt $attempt of $MAX_RETRIES"
+            
+            # Start a background process to check mount health during download
+            (
+              while true; do
+                sleep 60
+                if ! ~/check_mount.sh ~/rclone-mount > /dev/null; then
+                  echo "$(date): Mount issue detected during download, attempting to fix..."
+                  ~/remount.sh ~/rclone-mount
+                else
+                  echo "$(date): Mount health check passed"
+                fi
+              done
+            ) & HEALTH_PID=$!
+            
+            # Start the download with timeout
+            timeout 90m mega-get -q "$MEGA_URL" ~/rclone-mount/incoming/
+            download_result=$?
+            
+            # Kill the health checker
+            kill $HEALTH_PID 2>/dev/null || true
+            
+            if [ $download_result -eq 0 ]; then
+              echo "Download completed successfully"
+              success=true
+              break
+            elif [ $download_result -eq 124 ]; then
+              echo "Download timed out after 90 minutes"
+            else
+              echo "Download failed with exit code $download_result"
+            fi
+            
+            # Check mount before retry
+            check_before_proceed || exit 1
+            
+            # Clean up any partial downloads before retrying
+            rm -rf ~/rclone-mount/incoming/* 2>/dev/null || true
+            
+            # Wait before retry
+            sleep 10
+          done
+          
+          if [ "$success" = "false" ]; then
+            echo "::error::All download attempts failed"
+            echo "download_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check if directory has content
+          if [ -z "$(ls -A ~/rclone-mount/incoming/ 2>/dev/null)" ]; then
+            echo "::error::Download directory is empty after apparent success"
+            echo "download_success=false" >> $GITHUB_OUTPUT
             exit 1
           fi
           
           echo "Download completed. Contents of mount/incoming:"
           ls -la ~/rclone-mount/incoming/
+          echo "download_success=true" >> $GITHUB_OUTPUT
       
       - name: Clean filenames
-        if: steps.check_links.outputs.has_links == 'true'
+        if: steps.check_links.outputs.has_links == 'true' && steps.mega_download.outputs.download_success == 'true'
         run: |
+          # Check mount before proceeding
+          if ! ~/check_mount.sh ~/rclone-mount; then
+            echo "Mount issue detected, attempting to fix..."
+            ~/remount.sh ~/rclone-mount || true
+          fi
+          
           # Check if clean.sh exists
           if [ -f "clean.sh" ]; then
+            echo "Running filename cleaner script"
             chmod +x clean.sh
-            # Modify clean.sh to work with the mount path instead
-            sed -i 's|./Mega-Sync/|~/rclone-mount/incoming/|g' clean.sh
-            ./clean.sh
+            # Create a modified version for the mount path
+            cp clean.sh clean_mount.sh
+            # Modify the script to work with the mount path
+            sed -i 's|./Mega-Sync/|~/rclone-mount/incoming/|g' clean_mount.sh
+            
+            # Run with error handling
+            if ! ./clean_mount.sh; then
+              echo "::warning::Filename cleaning encountered errors but continuing"
+            fi
           else
             echo "clean.sh not found, skipping filename cleaning"
           fi
           
-      - name: Move files to final location in mount
-        if: steps.check_links.outputs.has_links == 'true'
+      - name: Move files and verify transfer
+        if: steps.check_links.outputs.has_links == 'true' && steps.mega_download.outputs.download_success == 'true'
+        id: verify_transfer
         run: |
+          # Check mount before proceeding
+          if ! ~/check_mount.sh ~/rclone-mount; then
+            echo "Mount issue detected, attempting to fix..."
+            ~/remount.sh ~/rclone-mount || true
+          fi
+          
           # Check if directory has content
-          if [ -z "$(ls -A ~/rclone-mount/incoming/)" ]; then
-            echo "Download directory is empty. MEGA download may have failed."
+          if [ -z "$(ls -A ~/rclone-mount/incoming/ 2>/dev/null)" ]; then
+            echo "::error::Download directory is empty - cannot proceed with transfer"
+            echo "transfer_success=false" >> $GITHUB_OUTPUT
             exit 1
           fi
           
-          # Move files from incoming to root of the mount
-          find ~/rclone-mount/incoming -type f -not -name "*.pdf" -not -name "*.txt" -exec mv {} ~/rclone-mount/ \;
+          # Count files to move
+          FILE_COUNT=$(find ~/rclone-mount/incoming -type f -not -name "*.pdf" -not -name "*.txt" | wc -l)
+          echo "Found $FILE_COUNT files to transfer"
+          
+          if [ "$FILE_COUNT" -eq 0 ]; then
+            echo "::warning::No matching files to transfer (excluding PDFs and TXTs)"
+            echo "transfer_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Move files with progress tracking
+          echo "Moving files to final location..."
+          COUNTER=0
+          FAILURES=0
+          
+          find ~/rclone-mount/incoming -type f -not -name "*.pdf" -not -name "*.txt" | while read file; do
+            filename=$(basename "$file")
+            COUNTER=$((COUNTER+1))
+            echo "[$COUNTER/$FILE_COUNT] Moving: $filename"
+            
+            if ! mv "$file" ~/rclone-mount/ 2>/dev/null; then
+              echo "::warning::Failed to move: $filename"
+              FAILURES=$((FAILURES+1))
+            fi
+          done
+          
+          # Report results
+          echo "Transfer completed with $FAILURES failures out of $FILE_COUNT files"
+          
+          if [ $FAILURES -gt 0 ] && [ $FAILURES -eq $FILE_COUNT ]; then
+            echo "::error::All transfers failed!"
+            echo "transfer_success=false" >> $GITHUB_OUTPUT
+            exit 1
+          elif [ $FAILURES -gt 0 ]; then
+            echo "::warning::Some transfers failed but continuing"
+          fi
+          
+          # Force sync from cache to remote
+          echo "Ensuring files are synced to remote..."
+          sleep 30  # Allow time for rclone to process writes
           
           # Remove empty incoming directory
-          rmdir ~/rclone-mount/incoming || true
+          rmdir ~/rclone-mount/incoming 2>/dev/null || true
           
-          echo "Files moved to final location. Current mount contents:"
+          echo "Final mount contents:"
           ls -la ~/rclone-mount/
+          echo "transfer_success=true" >> $GITHUB_OUTPUT
+      
+      - name: Force sync and wait for completion
+        if: steps.check_links.outputs.has_links == 'true' && steps.verify_transfer.outputs.transfer_success == 'true'
+        run: |
+          echo "Forcing sync to complete and waiting for transfers to finish..."
+          
+          # Check for active transfers via rclone rc
+          for i in {1..12}; do  # Wait up to 2 minutes (12 x 10s)
+            echo "Checking transfer status (attempt $i)..."
+            
+            # Use direct status check or check mount log for activity
+            if [ -f ~/rclone-mount.log ]; then
+              if ! grep -q "transferring" ~/rclone-mount.log; then
+                echo "No active transfers detected in log"
+                break
+              fi
+            fi
+            
+            echo "Transfers still in progress, waiting..."
+            sleep 10
+          done
+          
+          # Final wait to be safe
+          echo "Final wait for sync completion..."
+          sleep 30
       
       - name: Ensure sync completion and unmount
         if: steps.check_links.outputs.has_links == 'true' && always()
         run: |
-          # Force sync to complete before unmounting
-          echo "Syncing changes to remote storage..."
-          sleep 30  # Give time for background uploads to complete
+          # Try to ensure all writes are flushed
+          sync
           
-          # Unmount the rclone mount
-          echo "Unmounting rclone..."
-          fusermount -u ~/rclone-mount || true
+          # Kill any background health checker processes
+          pkill -f health_checker.sh 2>/dev/null || true
+          
+          # Wait before unmounting
+          sleep 5
+          
+          # Kill rclone by PID first (more reliable)
+          if [ -f ~/rclone.pid ]; then
+            echo "Stopping rclone using saved PID..."
+            PID=$(cat ~/rclone.pid)
+            kill $PID 2>/dev/null || true
+            sleep 2
+            # Force kill if still running
+            kill -9 $PID 2>/dev/null || true
+          fi
+          
+          # Unmount with retries
+          for i in {1..3}; do
+            echo "Unmounting rclone (attempt $i)..."
+            fusermount -uz ~/rclone-mount 2>/dev/null && { echo "Unmount successful"; break; } || sleep 5
+            # On last attempt, try force unmount
+            if [ $i -eq 3 ]; then
+              echo "::warning::Using force unmount as last resort"
+              fusermount -uz ~/rclone-mount 2>/dev/null || true
+              sudo umount -f ~/rclone-mount 2>/dev/null || true
+            fi
+          done
+          
+          # Double check if any rclone processes are still running
+          if pgrep -f "rclone mount"; then
+            echo "::warning::Rclone mount processes still running, force killing..."
+            pkill -9 -f "rclone mount" || true
+          fi
       
       - name: Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
-        run: mega-logout || true
+        run: |
+          echo "Logging out from MEGA..."
+          mega-logout 2>/dev/null || true
         
       - name: Update link files
-        if: steps.check_links.outputs.has_links == 'true' && success()
+        if: steps.check_links.outputs.has_links == 'true' && steps.verify_transfer.outputs.transfer_success == 'true'
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           
@@ -170,3 +528,18 @@ jobs:
           git add pending_links.txt done_links.txt
           git commit -m "Processed link: $MEGA_URL"
           git push
+          
+      - name: Report status
+        if: always()
+        run: |
+          echo "==== WORKFLOW SUMMARY ===="
+          echo "Free space at end:"
+          df -h
+          
+          # Display logs if they exist
+          if [ -f ~/rclone-mount.log ]; then
+            echo "==== RCLONE MOUNT LOG (LAST 50 LINES) ===="
+            tail -n 50 ~/rclone-mount.log || true
+          fi
+          
+          echo "==== WORKFLOW COMPLETE ===="
