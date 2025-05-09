@@ -101,7 +101,7 @@ jobs:
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
                 --stats 1s \
-                --stats-one-line \
+                --stats-one-line -P \
                 --bwlimit 0 \
                 --retries 3 \
                 --retries-sleep 10s \
@@ -115,7 +115,7 @@ jobs:
                 --dropbox-batch-size 100
           # Async File Checking 
           rclone --config "rclone.conf" copy Mega: "NewDrop:Sync" --transfers 100 --checkers 100 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
-                --dropbox-batch-mode async \
+                --dropbox-batch-mode async -P \
                 --dropbox-batch-size  100 --exclude "*.{pdf,txt}" 
           
       - name: Clear Temp Files and Logout from MEGA
