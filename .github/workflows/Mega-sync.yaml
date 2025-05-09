@@ -72,6 +72,8 @@ jobs:
         run: |
           # Using secrets to login to MEGA
           mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
+          mega-rm -r Mega-Sync -f
+          
           
       - name: Setup Rclone Config
         if: steps.check_links.outputs.has_links == 'true'
@@ -84,7 +86,6 @@ jobs:
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           echo "Importing $MEGA_URL for WebDav"
-          mega-rm -r Mega-Sync -f
           mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
           mega-webdav Mega-Sync
