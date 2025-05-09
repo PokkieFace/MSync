@@ -106,8 +106,6 @@ jobs:
                 --retries 3 \
                 --retries-sleep 10s \
                 --timeout 300s \
-                --tpslimit 10 \
-                --tpslimit-burst 20 \
                 --exclude "*.{pdf,txt}" \
                 --fast-list \
                 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
