@@ -98,7 +98,7 @@ jobs:
           echo "Starting rclone transfer..."
           # Sync Fast File Transfer
           rclone --config "rclone.conf" copy Mega:Mega-Sync "NewDrop:Sync" \
-                --transfers 60 \
+                --transfers 50 \
                 --checkers 60 \
                 --buffer-size 64M \
                 --dropbox-chunk-size 150M \
@@ -108,11 +108,11 @@ jobs:
                 --retries 3 \
                 --retries-sleep 10s \
                 --exclude "*.{pdf,txt,jpg,png,jpeg,gif,webm}" \
-                --fast-list  --rmdirs \
+                --fast-list \
                 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
                 --dropbox-batch-mode async \
-                --dropbox-batch-size 60
-          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 70  --rmdirs --checkers 100 -v --exclude "*.{pdf,txt,mp4,m4v,flv,avi,mkv,mp3}" --include "*.{jpg,png,jpeg,gif,webm}"
+                --dropbox-batch-size 50
+          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 100 --checkers 100 -v --exclude "*.{pdf,txt,mp4,m4v,flv,avi,mkv,mp3}" --include "*.{jpg,png,jpeg,gif,webm}"
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
