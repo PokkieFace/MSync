@@ -105,7 +105,6 @@ jobs:
                 --bwlimit 0 \
                 --retries 3 \
                 --retries-sleep 10s \
-                --timeout 300s \
                 --exclude "*.{pdf,txt}" \
                 --fast-list \
                 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
