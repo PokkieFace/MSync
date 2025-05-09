@@ -114,7 +114,7 @@ jobs:
                 --dropbox-batch-size 70
           # Async File Checking 
           rclone --config "rclone.conf" copy Mega:Mega-Sync "NewDrop:Sync" --transfers 70 --checkers 100 -v --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" --dropbox-batch-mode async --dropbox-batch-size 70 --exclude "*.{pdf,txt,jpg,png,jpeg,gif,webm}" 
-          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 70 --checkers 100 -v --exclude "*.{pdf,txt}" 
+          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 70 --checkers 100 -v --exclude "*.{pdf,txt}" --include "*.{jpg,png,jpeg,gif,webm}"
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
