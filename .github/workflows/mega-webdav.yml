@@ -135,6 +135,7 @@ jobs:
           mv pending_links_new.txt pending_links.txt
           
           # Commit and push changes
+          git pull
           git add pending_links.txt done_links.txt
           git commit -m "Processed link: $MEGA_URL"
           git push
