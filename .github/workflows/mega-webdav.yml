@@ -51,6 +51,7 @@ jobs:
           
           # Get first link
           MEGA_URL=$(grep -m 1 "https://mega.nz" pending_links.txt)
+          NEXT_MEGA_URL=$(grep -m 2 "https://mega.nz" pending_links.txt)
           echo "Processing link: $MEGA_URL"
           echo "mega_url=$MEGA_URL" >> $GITHUB_OUTPUT
       
@@ -114,6 +115,43 @@ jobs:
                 --dropbox-batch-size 30
           rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 100 --checkers 100 -v --exclude "*.{pdf,txt,mp4,m4v,flv,avi,mkv,mp3}" --include "*.{jpg,png,jpeg,gif,webm}"
           
+      - name: Check next MEGA link size and update README
+        if: steps.check_links.outputs.has_links == 'true'
+        run: |
+          echo "Getting next MEGA link..."
+          NEXT_LINK=$(grep -m 2 "https://mega.nz" pending_links.txt | tail -n 1)
+
+          if [ -z "$NEXT_LINK" ]; then
+            echo "No next MEGA link found."
+            exit 0
+          fi
+
+          echo "Importing next link: $NEXT_LINK"
+          mega-import "$NEXT_LINK" /Next-Mega
+
+          sleep 5
+          
+          echo "Checking size of imported next folder..."
+          FOLDER_NAME=$(mega-ls /Next-Mega | head -n 1 | awk '{print $2}')
+          FULL_PATH="/Next-Mega/$FOLDER_NAME"
+
+          if [ -z "$FOLDER_NAME" ]; then
+            echo "Failed to detect folder name in /Next-Mega"
+            exit 1
+          fi
+
+          SIZE=$(mega-du "$FULL_PATH" | awk '{print $1}')
+          echo "Size of next MEGA link: $SIZE"
+
+          echo "" >> README.md
+          echo "### Next MEGA Folder Size" >> README.md
+          echo "- Link: [$NEXT_LINK]($NEXT_LINK)" >> README.md
+          echo "- Folder: $FOLDER_NAME" >> README.md
+          echo "- Size: $SIZE" >> README.md
+
+          # Clean up next imported folder
+          mega-rm -r /Next-Mega
+
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
         run: |
@@ -134,6 +172,6 @@ jobs:
           mv pending_links_new.txt pending_links.txt
           
           # Commit and push changes
-          git add pending_links.txt done_links.txt
+          git add pending_links.txt done_links.txt README.md
           git commit -m "Processed link: $MEGA_URL"
           git push
