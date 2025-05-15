@@ -85,7 +85,7 @@ jobs:
         run: |
           MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
           echo "Importing $MEGA_URL for WebDav"
-          mega-rm -r Mega-Sync -f  || echo "Failed to Delete Sync Folder.So, Creating Sunc Folder"
+          mega-rm -r Mega-Sync -f  || echo "Failed to Delete Sync Folder.So, Creating Sync Folder"
           sleep 5
           mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
@@ -98,7 +98,7 @@ jobs:
           fi
 
           SIZE=$(mega-du "$FULL_PATH" | awk '{print $1}')
-          echo "Size of next MEGA link: $SIZE"
+          echo "Size of MEGA link: $SIZE"
 
           echo "" >> README.md
           echo "### MEGA Folder Size" >> README.md
