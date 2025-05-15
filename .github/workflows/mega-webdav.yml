@@ -89,14 +89,6 @@ jobs:
           sleep 5
           mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
-          FULL_PATH="/Mega-Sync"
-          SIZE=$(mega-du "$FULL_PATH" | awk '{print $1}')
-          echo "Size of MEGA link: $SIZE"
-
-          echo "" >> README.md
-          echo "### MEGA Folder Size" >> README.md
-          echo "- Link: [$MEGA_URL]($MEGA_URL)" >> README.md
-          echo "- Size: $SIZE" >> README.md
           mega-webdav /
           # Downloading and Uploading causing Storage Limitations 
           # mega-get "$MEGA_URL" ./Mega-Sync
@@ -143,6 +135,6 @@ jobs:
           mv pending_links_new.txt pending_links.txt
           
           # Commit and push changes
-          git add pending_links.txt done_links.txt README.md
+          git add pending_links.txt done_links.txt
           git commit -m "Processed link: $MEGA_URL"
           git push
