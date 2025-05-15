@@ -89,21 +89,13 @@ jobs:
           sleep 5
           mega-mkdir Mega-Sync
           mega-import "$MEGA_URL" /Mega-Sync
-          FOLDER_NAME=$(mega-ls /Mega-Sync | head -n 1 | awk '{print $2}')
-          FULL_PATH="/Mega-Sync/$FOLDER_NAME"
-
-          if [ -z "$FOLDER_NAME" ]; then
-            echo "Failed to detect folder name in /Next-Mega"
-            exit 1
-          fi
-
+          FULL_PATH="/Mega-Sync"
           SIZE=$(mega-du "$FULL_PATH" | awk '{print $1}')
           echo "Size of MEGA link: $SIZE"
 
           echo "" >> README.md
           echo "### MEGA Folder Size" >> README.md
           echo "- Link: [$NEXT_LINK]($NEXT_LINK)" >> README.md
-          echo "- Folder: $FOLDER_NAME" >> README.md
           echo "- Size: $SIZE" >> README.md
           mega-webdav /
           # Downloading and Uploading causing Storage Limitations 
