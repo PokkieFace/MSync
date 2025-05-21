@@ -1,4 +1,4 @@
-name: MEGA Webdav to Rclone Sync
+name: MEGA Failed Link Recovery 
 
 on:
   workflow_dispatch:
