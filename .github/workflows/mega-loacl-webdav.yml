@@ -1,4 +1,4 @@
-name: MEGA Webdav to Rclone Sync
+name: MEGA Webdav to Rclone Root
 
 on:
   workflow_dispatch:
