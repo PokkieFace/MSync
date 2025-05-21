@@ -61,7 +61,7 @@ jobs:
         run: |
           set -e
           echo "Starting rclone sync..."
-          rclone --config "rclone.conf" move "Mega:RootCopy" "NewDrop:RootCopy" \
+          rclone --config "rclone.conf" copy "Mega:RootCopy" "NewDrop:RootCopy" \
             --transfers 40 \
             --checkers 100 \
             --buffer-size 64M \
