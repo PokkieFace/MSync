@@ -61,7 +61,7 @@ jobs:
         run: |
           set -e
           echo "Starting rclone sync..."
-          rclone --config "rclone.conf" move Mega: "NewDrop:Mega" \
+          rclone --config "rclone.conf" move "Mega:Desi Pack" "NewDrop:Desi_Pack" \
             --transfers 40 \
             --checkers 100 \
             --buffer-size 64M \
@@ -81,7 +81,7 @@ jobs:
           set -e
           echo "Checking upload destination..."
           mkdir -p logs
-          rclone --config "rclone.conf" lsd "NewDrop:Mega" >> logs/upload_check.log 2>&1
+          rclone --config "rclone.conf" lsd "NewDrop:Desi_Pack" >> logs/upload_check.log 2>&1
           echo "Checked at: $(date)" >> logs/upload_check.log
       
       - name: Commit and Push Upload Log
