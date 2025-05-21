@@ -1,0 +1,67 @@
+name: MEGA Webdav to Rclone Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+  
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12  # Set a reasonable timeout
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}  # Required for pushing changes back
+      
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+      
+ 
+      - name: Check for links
+        id: check_links
+        run: |
+          # Create files if they don't exist
+          touch pending_links.txt done_links.txt
+          
+          # Count pending links
+          PENDING_COUNT=$(grep -c "https://mega.nz" pending_links.txt || echo "0")
+          echo "Number of pending links: $PENDING_COUNT"
+          
+          if [ "$PENDING_COUNT" -eq "0" ]; then
+            echo "No pending links found. Exiting workflow."
+            echo "has_links=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "has_links=true" >> $GITHUB_OUTPUT
+          fi
+          
+          # Get first link
+          MEGA_URL=$(grep -m 1 "https://mega.nz" pending_links.txt)
+          echo "Failed link: $MEGA_URL"
+          echo "mega_url=$MEGA_URL" >> $GITHUB_OUTPUT
+      
+      - name: Update link files
+        if: steps.check_links.outputs.has_links == 'true' && success()
+        run: |
+          MEGA_URL="${{ steps.check_links.outputs.mega_url }}"
+          
+          # Add timestamp to done link
+          echo "$(date '+%Y-%m-%d %H:%M:%S') - $MEGA_URL" >> failed_links.txt
+         
+          # Remove from pending links (create new file without the processed link)
+          grep -v "$MEGA_URL" pending_links.txt > pending_links_new.txt
+          mv pending_links_new.txt pending_links.txt
+          
+          # Commit and push changes
+          git pull
+          git add failed_links.txt
+          git commit -m "Removed Failed link: $MEGA_URL"
+          git push
+          
