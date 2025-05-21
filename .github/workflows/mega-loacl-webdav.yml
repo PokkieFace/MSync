@@ -1,6 +1,4 @@
-un: |
-             mega-logout
-  name: MEGA Webdav to Rclone Sync
+name: MEGA Webdav to Rclone Sync
 
 on:
   workflow_dispatch:
