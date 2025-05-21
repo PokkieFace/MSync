@@ -1,0 +1,102 @@
+un: |
+             mega-logout
+  name: MEGA Webdav to Rclone Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Git user
+        run: |
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl
+
+      - name: Install MEGA CMD
+        run: |
+          set -e
+          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
+
+      - name: Install Rclone
+        run: |
+          set -e
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Setup MEGA credentials
+        timeout-minutes: 3
+        run: |
+          set -e
+          echo "Logging into MEGA..."
+          mega-login "${{ secrets.MEGA_EMAIL }}" "${{ secrets.MEGA_PASSWORD }}"
+
+      - name: Setup Rclone Config
+        run: |
+          set -e
+          echo "Setting up rclone config..."
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
+
+      - name: Start MEGA Webdav
+        run: |
+          set -e
+          echo "Starting MEGA WebDAV..."
+          mega-webdav / &
+
+      - name: Upload to Rclone destination
+        run: |
+          set -e
+          echo "Starting rclone sync..."
+          rclone --config "rclone.conf" move Mega: "NewDrop:Mega" \
+            --transfers 40 \
+            --checkers 100 \
+            --buffer-size 64M \
+            --dropbox-chunk-size 150M \
+            --stats 1s \
+            --stats-one-line -v \
+            --bwlimit 0 \
+            --retries 3 \
+            --retries-sleep 10s \
+            --fast-list \
+            --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
+            --dropbox-batch-mode async \
+            --dropbox-batch-size 40 || echo "rclone sync failed."
+
+      - name: Check Upload Destination Folder
+        run: |
+          set -e
+          echo "Checking upload destination..."
+          mkdir -p logs
+          rclone --config "rclone.conf" lsd "NewDrop:Mega" >> logs/upload_check.log 2>&1
+          echo "Checked at: $(date)" >> logs/upload_check.log
+      
+      - name: Commit and Push Upload Log
+        run: |
+          set -e
+          git config --global user.name "GitHub Actions Bot"
+          git config --global user.email "actions@github.com"
+          git add logs/upload_check.log
+          git commit -m "Add upload check log $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push
+
+      - name: Clear Temp Files and Logout from MEGA
+        run: |
+          set -e
+          echo "Cleaning up..."
+          mega-logout || echo "MEGA logout failed."
