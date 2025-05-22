@@ -121,15 +121,7 @@ jobs:
              mega-rm -r Mega-Sync -f  || echo "Failed to Delete Sync Folder.So, Creating Sunc Folder"
              sleep 5
              mega-logout
-      - name: Trigger recovery workflow on failure
-        if: failure()
-        run: |
-          curl -X POST \
-            -H "Accept: application/vnd.github+json" \
-            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-            https://api.github.com/repos/${{ github.repository }}/actions/workflows/recovery.yml/dispatches \
-            -d '{"ref":"main"}'
-            
+      
       - name: Update link files
         if: steps.check_links.outputs.has_links == 'true' && success()
         run: |
