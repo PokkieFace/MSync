@@ -108,12 +108,12 @@ jobs:
                 --bwlimit 0 \
                 --retries 3 \
                 --retries-sleep 10s \
-                --exclude "*.{pdf,txt,jpg,png,jpeg,gif,webm}" \
+                --include "*.{mp4,m4v,flv,avi,mkv,mov}" \
                 --fast-list \
                 --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
                 --dropbox-batch-mode async \
                 --dropbox-batch-size 30
-          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 100 --checkers 100 -v --exclude "*.{pdf,txt,mp4,m4v,flv,avi,mkv,mp3}" --include "*.{jpg,png,jpeg,gif,webm}"
+          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 100 --checkers 100 -v --include "*.{jpg,png,jpeg,gif,webm}"
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
