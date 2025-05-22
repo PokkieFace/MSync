@@ -61,7 +61,7 @@ jobs:
           
           # Commit and push changes
           git pull
-          git add failed_links.txt
+          git add failed_links.txt pending_links.txt
           git commit -m "Removed Failed link: $MEGA_URL"
           git push
           
