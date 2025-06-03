@@ -76,7 +76,7 @@ jobs:
       
       - name: Setup MEGA credentials
         if: steps.check_links.outputs.has_links == 'true'
-        timeout-minutes: 3
+        timeout-minutes: 5
         run: |
           # Using secrets to login to MEGA
           mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
@@ -112,41 +112,20 @@ jobs:
           
           echo "Starting rclone transfer..."
           # Sync Fast File Transfer
-          rclone --config "rclone.conf" copy "./Mega-Sync/" "NewDrop:Sync" \
-                --transfers 100 \
-                --checkers 100 \
-                --buffer-size 64M \
-                --dropbox-chunk-size 150M \
-                --stats 4s \
-                --stats-one-line -v \
-                --bwlimit 0 \
-                --retries 3 \
-                --retries-sleep 10s \
-                --tpslimit 10 \
-                --tpslimit-burst 20 \
-                --exclude "*.{pdf,txt}" \
-                --fast-list \
-                --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
-                --dropbox-batch-mode sync \
-                --dropbox-batch-size 100
-          rclone --config "rclone.conf" copy "./Mega-Sync/" "NewDrop:Sync" \
-                --transfers 64 \
-                --checkers 64 \
-                --buffer-size 64M \
-                --dropbox-chunk-size 150M \
-                --stats 4s \
-                --stats-one-line -v \
-                --bwlimit 0 \
-                --retries 3 \
-                --retries-sleep 10s \
-                --tpslimit 10 \
-                --tpslimit-burst 20 \
-                --exclude "*.{pdf,txt}" \
-                --fast-list \
-                --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
-                --dropbox-batch-mode async \
-                --dropbox-batch-size 64
-                
+          rclone --config "rclone.conf" move Mega:Mega-Sync MayB2:Spidy052025/Mega-Sync \
+              --transfers 50 \
+              --checkers 50 \
+              --b2-chunk-size 200M \
+              --buffer-size 128M \
+              --b2-upload-cutoff 200M \
+              --b2-disable-checksum \
+              --stats 1s \
+              --stats-one-line -v \
+              --bwlimit 0 \
+              --retries 3 \
+              --retries-sleep 10s \
+              --include "*.{mp4,m4v,flv,avi,mkv,mov}" \
+              --fast-list                
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
         run: mega-logout
