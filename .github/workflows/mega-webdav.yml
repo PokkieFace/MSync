@@ -98,22 +98,26 @@ jobs:
         run: |
           echo "Starting rclone transfer..."
           # Sync Fast File Transfer
-          rclone --config "rclone.conf" move Mega:Mega-Sync "NewDrop:Sync" \
-                --transfers 30 \
-                --checkers 60 \
-                --buffer-size 64M \
-                --dropbox-chunk-size 150M \
-                --stats 1s \
-                --stats-one-line -v \
-                --bwlimit 0 \
-                --retries 3 \
-                --retries-sleep 10s \
-                --include "*.{mp4,m4v,flv,avi,mkv,mov}" \
-                --fast-list \
-                --dropbox-encoding "Slash,BackSlash,Del,RightSpace,InvalidUtf8,Dot" \
-                --dropbox-batch-mode async \
-                --dropbox-batch-size 30
-          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures --transfers 100 --checkers 100 -v --include "*.{jpg,png,jpeg,gif,webm}"
+          rclone --config "rclone.conf" move Mega:Mega-Sync MayB2:Spidy052025/Mega-Sync \
+              --transfers 50 \
+              --checkers 50 \
+              --b2-chunk-size 200M \
+              --buffer-size 128M \
+              --b2-upload-cutoff 200M \
+              --b2-disable-checksum \
+              --stats 1s \
+              --stats-one-line -v \
+              --bwlimit 0 \
+              --retries 3 \
+              --retries-sleep 10s \
+              --include "*.{mp4,m4v,flv,avi,mkv,mov}" \
+              --fast-list
+          rclone --config "rclone.conf" move Mega:Mega-Sync Mega:Pictures \
+              --transfers 100 \
+              --checkers 100 \
+              -v \
+              --include "*.{jpg,png,jpeg,gif,webm}"
+
           
       - name: Clear Temp Files and Logout from MEGA
         if: steps.check_links.outputs.has_links == 'true' && always()
