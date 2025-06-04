@@ -1,0 +1,42 @@
+name: SSHX Session
+
+on:
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3000 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      
+      - name: Set up environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget curl
+      
+      - name: Install MEGA CMD
+        run: |
+          wget -q https://mega.nz/linux/repo/xUbuntu_22.04/amd64/megacmd_2.1.1-1.1_amd64.deb
+          sudo apt-get install -y ./megacmd_2.1.1-1.1_amd64.deb
+        
+      - name: Install Rclone
+        run: |
+          sudo -v
+          curl https://rclone.org/install.sh | sudo bash
+      
+      - name: Setup MEGA credentials
+        timeout-minutes: 5
+        run: |
+          # Using secrets to login to MEGA
+          mega-login  "${{ secrets.MEGA_EMAIL }}"  "${{ secrets.MEGA_PASSWORD }}"
+          
+      - name: Setup Rclone Config
+        run: |
+          # Decode the base64-encoded rclone.conf from secrets
+          echo "${{ secrets.RCLONE_CONFIG }}" | base64 -d > rclone.conf
+  
+      - name: Set up Shhx Session
+        run: |
+          curl -sSf https://sshx.io/get | sh -s run
